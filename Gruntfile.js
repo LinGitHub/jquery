@@ -2,21 +2,24 @@ module.exports = function( grunt ) {
 	"use strict";
 
 	function readOptionalJSON( filepath ) {
-		var data = {};
+		var stripJSONComments = require( "strip-json-comments" ),
+			data = {};
 		try {
-			data = grunt.file.readJSON( filepath );
+			data = JSON.parse( stripJSONComments(
+				fs.readFileSync( filepath, { encoding: "utf8" } )
+			) );
 		} catch ( e ) {}
 		return data;
 	}
 
-	var gzip = require( "gzip-js" ),
-		srcHintOptions = readOptionalJSON( "src/.jshintrc" );
+	var fs = require( "fs" ),
+		gzip = require( "gzip-js" );
 
-	// The concatenated file won't pass onevar
-	// But our modules can
-	delete srcHintOptions.onevar;
+	if ( !grunt.option( "filename" ) ) {
+		grunt.option( "filename", "jquery.js" );
+	}
 
-	grunt.initConfig({
+	grunt.initConfig( {
 		pkg: grunt.file.readJSON( "package.json" ),
 		dst: readOptionalJSON( "dist/.destination.json" ),
 		"compare_size": {
@@ -30,6 +33,18 @@ module.exports = function( grunt ) {
 				cache: "build/.sizecache.json"
 			}
 		},
+		babel: {
+			options: {
+				sourceMap: "inline",
+				retainLines: true
+			},
+			nodeSmokeTests: {
+				files: {
+					"test/node_smoke_tests/lib/ensure_iterability.js":
+						"test/node_smoke_tests/lib/ensure_iterability_es6.js"
+				}
+			}
+		},
 		build: {
 			all: {
 				dest: "dist/jquery.js",
@@ -37,11 +52,17 @@ module.exports = function( grunt ) {
 					"core",
 					"selector"
 				],
+
 				// Exclude specified modules if the module matching the key is removed
 				removeWith: {
 					ajax: [ "manipulation/_evalUrl", "event/ajax" ],
 					callbacks: [ "deferred" ],
 					css: [ "effects", "dimensions", "offset" ],
+					"css/showHide": [ "effects" ],
+					deferred: {
+						remove: [ "ajax", "effects", "queue", "core/ready" ],
+						include: [ "core/ready-no-deferred" ]
+					},
 					sizzle: [ "css/hiddenVisibleSelectors", "effects/animatedSelector" ]
 				}
 			}
@@ -55,13 +76,20 @@ module.exports = function( grunt ) {
 					"sizzle/dist": "sizzle/dist",
 					"sizzle/LICENSE.txt": "sizzle/LICENSE.txt",
 
+					"npo/npo.js": "native-promise-only/npo.js",
+
 					"qunit/qunit.js": "qunitjs/qunit/qunit.js",
 					"qunit/qunit.css": "qunitjs/qunit/qunit.css",
 					"qunit/LICENSE.txt": "qunitjs/LICENSE.txt",
 
+					"qunit-assert-step/qunit-assert-step.js":
+					"qunit-assert-step/qunit-assert-step.js",
+					"qunit-assert-step/MIT-LICENSE.txt":
+					"qunit-assert-step/MIT-LICENSE.txt",
+
 					"requirejs/require.js": "requirejs/require.js",
 
-					"sinon/fake_timers.js": "sinon/lib/sinon/util/fake_timers.js",
+					"sinon/sinon.js": "sinon/pkg/sinon.js",
 					"sinon/LICENSE.txt": "sinon/LICENSE"
 				}
 			}
@@ -69,44 +97,42 @@ module.exports = function( grunt ) {
 		jsonlint: {
 			pkg: {
 				src: [ "package.json" ]
-			},
-
-			bower: {
-				src: [ "bower.json" ]
 			}
 		},
-		jshint: {
-			all: {
-				src: [
-					"src/**/*.js", "Gruntfile.js", "test/**/*.js", "build/**/*.js"
-				],
-				options: {
-					jshintrc: true
-				}
+		eslint: {
+			options: {
+
+				// See https://github.com/sindresorhus/grunt-eslint/issues/119
+				quiet: true
 			},
+
+			// We have to explicitly declare "src" property otherwise "newer"
+			// task wouldn't work properly :/
 			dist: {
-				src: "dist/jquery.js",
-				options: srcHintOptions
+				src: "dist/jquery.js"
+			},
+			dev: {
+				src: [ "src/**/*.js", "Gruntfile.js", "test/**/*.js", "build/**/*.js" ]
 			}
-		},
-		jscs: {
-			src: "src/**/*.js",
-			gruntfile: "Gruntfile.js",
-
-			// Right now, check only test helpers
-			test: [ "test/data/testrunner.js" ],
-			release: [ "build/*.js", "!build/release-notes.js" ],
-			tasks: "build/tasks/*.js"
 		},
 		testswarm: {
 			tests: [
+
+				// A special module with basic tests, meant for
+				// not fully supported environments like Android 2.3,
+				// jsdom or PhantomJS. We run it everywhere, though,
+				// to make sure tests are not broken.
+				"basic",
+
 				"ajax",
+				"animation",
 				"attributes",
 				"callbacks",
 				"core",
 				"css",
 				"data",
 				"deferred",
+				"deprecated",
 				"dimensions",
 				"effects",
 				"event",
@@ -116,29 +142,32 @@ module.exports = function( grunt ) {
 				"selector",
 				"serialize",
 				"support",
-				"traversing"
+				"traversing",
+				"tween"
 			]
 		},
 		watch: {
-			files: [ "<%= jshint.all.src %>" ],
-			tasks: "dev"
+			files: [ "<%= eslint.dev.src %>" ],
+			tasks: [ "dev" ]
 		},
 		uglify: {
 			all: {
 				files: {
-					"dist/jquery.min.js": [ "dist/jquery.js" ]
+					"dist/<%= grunt.option('filename').replace('.js', '.min.js') %>":
+						"dist/<%= grunt.option('filename') %>"
 				},
 				options: {
 					preserveComments: false,
 					sourceMap: true,
-					sourceMapName: "dist/jquery.min.map",
+					ASCIIOnly: true,
+					sourceMapName:
+						"dist/<%= grunt.option('filename').replace('.js', '.min.map') %>",
 					report: "min",
 					beautify: {
 						"ascii_only": true
 					},
 					banner: "/*! jQuery v<%= pkg.version %> | " +
-						"(c) 2005, <%= grunt.template.today('yyyy') %> jQuery Foundation, Inc. | " +
-						"jquery.org/license */",
+						"(c) JS Foundation and other contributors | jquery.org/license */",
 					compress: {
 						"hoist_funs": false,
 						loops: false,
@@ -147,7 +176,7 @@ module.exports = function( grunt ) {
 				}
 			}
 		}
-	});
+	} );
 
 	// Load grunt tasks from NPM packages
 	require( "load-grunt-tasks" )( grunt );
@@ -155,26 +184,50 @@ module.exports = function( grunt ) {
 	// Integrate jQuery specific tasks
 	grunt.loadTasks( "build/tasks" );
 
-	grunt.registerTask( "lint", [ "jshint", "jscs" ] );
+	grunt.registerTask( "lint", [
+		"jsonlint",
 
-	grunt.registerTask( "node_smoke_test", function() {
-	    var done = this.async();
-		require( "jsdom" ).env( "", function( errors, window ) {
-			if ( errors ) {
-				console.error( errors );
-				done( false );
-			}
-			require( "./" )( window );
-			done();
-		});
-	});
+		// Running the full eslint task without breaking it down to targets
+		// would run the dist target first which would point to errors in the built
+		// file, making it harder to fix them. We want to check the built file only
+		// if we already know the source files pass the linter.
+		"eslint:dev",
+		"eslint:dist"
+	] );
 
-	// Short list as a high frequency watch task
-	grunt.registerTask( "dev", [ "build:*:*", "lint" ] );
+	grunt.registerTask( "lint:newer", [
+		"newer:jsonlint",
 
-	grunt.registerTask( "test_fast", [ "node_smoke_test" ] );
+		// Don't replace it with just the task; see the above comment.
+		"newer:eslint:dev",
+		"newer:eslint:dist"
+	] );
 
-	grunt.registerTask( "test", [ "default", "test_fast" ] );
+	grunt.registerTask( "test:fast", "node_smoke_tests" );
+	grunt.registerTask( "test:slow", "promises_aplus_tests" );
 
-	grunt.registerTask( "default", [ "jsonlint", "dev", "uglify", "dist:*", "compare_size" ] );
+	grunt.registerTask( "test", [
+		"test:fast",
+		"test:slow"
+	] );
+
+	grunt.registerTask( "dev", [
+		"build:*:*",
+		"newer:eslint:dev",
+		"newer:uglify",
+		"remove_map_comment",
+		"dist:*",
+		"compare_size"
+	] );
+
+	grunt.registerTask( "default", [
+		"eslint:dev",
+		"build:*:*",
+		"uglify",
+		"remove_map_comment",
+		"dist:*",
+		"eslint:dist",
+		"test:fast",
+		"compare_size"
+	] );
 };
