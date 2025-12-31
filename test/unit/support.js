@@ -1,4 +1,4 @@
-QUnit.module( "support", { teardown: moduleTeardown } );
+QUnit.module( "support", { afterEach: moduleTeardown } );
 
 var computedSupport = getComputedSupport( jQuery.support );
 
@@ -17,9 +17,9 @@ function getComputedSupport( support ) {
 	return result;
 }
 
-if ( jQuery.css ) {
+if ( includesModule( "css" ) ) {
 	testIframe(
-		"body background is not lost if set prior to loading jQuery (#9239)",
+		"body background is not lost if set prior to loading jQuery (trac-9239)",
 		"support/bodyBackground.html",
 		function( assert, jQuery, window, document, color, support ) {
 			assert.expect( 2 );
@@ -36,10 +36,10 @@ if ( jQuery.css ) {
 }
 
 // This test checks CSP only for browsers with "Content-Security-Policy" header support
-// i.e. no old WebKit or old Firefox
+// i.e. no IE
 testIframe(
 	"Check CSP (https://developer.mozilla.org/en-US/docs/Security/CSP) restrictions",
-	"support/csp.php",
+	"mock.php?action=cspFrame",
 	function( assert, jQuery, window, document, support ) {
 		var done = assert.async();
 
@@ -47,191 +47,77 @@ testIframe(
 		assert.deepEqual( jQuery.extend( {}, support ), computedSupport,
 			"No violations of CSP polices" );
 
-		supportjQuery.get( "data/support/csp.log" ).done( function( data ) {
+		supportjQuery.get( baseURL + "support/csp.log" ).done( function( data ) {
 			assert.equal( data, "", "No log request should be sent" );
-			supportjQuery.get( "data/support/csp-clean.php" ).done( done );
+			supportjQuery.get( baseURL + "mock.php?action=cspClean" ).done( done );
 		} );
 	}
 );
 
+testIframe(
+	"Verify correctness of support tests with bootstrap CSS on the page",
+	"support/bootstrap.html",
+	function( assert, jQuery, window, document, bodyStyle, support ) {
+		assert.expect( 2 );
+		assert.strictEqual( bodyStyle.boxSizing, "border-box",
+			"border-box applied on body by Bootstrap" );
+		assert.deepEqual( jQuery.extend( {}, support ), computedSupport,
+			"Same support properties" );
+	}
+);
+
+testIframe(
+	"Verify correctness of support tests with CSS zoom on the root element",
+	"support/zoom.html",
+	function( assert, jQuery, window, document, htmlStyle, support ) {
+		assert.expect( 1 );
+		assert.deepEqual( jQuery.extend( {}, support ), computedSupport,
+			"Same support properties" );
+	}
+);
+
 ( function() {
-	var expected, version,
-		userAgent = window.navigator.userAgent;
+	var expected,
+		userAgent = window.navigator.userAgent,
+		expectedMap = {
+			ie_11: {
+				reliableColDimensions: 11,
+				reliableTrDimensions: false
+			},
+			chrome: {
+				reliableColDimensions: true,
+				reliableTrDimensions: true
+			},
+			safari: {
+				reliableColDimensions: false,
+				reliableTrDimensions: true
+			},
+			firefox: {
+				reliableColDimensions: false,
+				reliableTrDimensions: false
+			},
+			ios: {
+				reliableColDimensions: false,
+				reliableTrDimensions: true
+			}
+		};
 
-	if ( /edge\//i.test( userAgent ) ) {
-		version = userAgent.match( /edge\/(\d+)/i )[ 1 ];
-		expected = {
-			"ajax": true,
-			"boxSizingReliable": true,
-			"checkClone": true,
-			"checkOn": true,
-			"clearCloneStyle": version >= 13,
-			"cors": true,
-			"createHTMLDocument": true,
-			"focusin": false,
-			"noCloneChecked": true,
-			"optSelected": true,
-			"pixelMarginRight": true,
-			"pixelPosition": true,
-			"radioValue": true,
-			"reliableMarginLeft": true
-		};
-	} else if ( /(msie 10\.0|trident\/7\.0)/i.test( userAgent ) ) {
-		expected = {
-			"ajax": true,
-			"boxSizingReliable": false,
-			"checkClone": true,
-			"checkOn": true,
-			"clearCloneStyle": false,
-			"cors": true,
-			"createHTMLDocument": true,
-			"focusin": true,
-			"noCloneChecked": false,
-			"optSelected": false,
-			"pixelMarginRight": true,
-			"pixelPosition": true,
-			"radioValue": false,
-			"reliableMarginLeft": true
-		};
-	} else if ( /msie 9\.0/i.test( userAgent ) ) {
-		expected = {
-			"ajax": true,
-			"boxSizingReliable": false,
-			"checkClone": true,
-			"checkOn": true,
-			"clearCloneStyle": false,
-			"cors": false,
-			"createHTMLDocument": true,
-			"focusin": true,
-			"noCloneChecked": false,
-			"optSelected": false,
-			"pixelMarginRight": true,
-			"pixelPosition": true,
-			"radioValue": false,
-			"reliableMarginLeft": true
-		};
-	} else if ( /chrome/i.test( userAgent ) ) {
+	if ( QUnit.isIE ) {
+		expected = expectedMap.ie_11;
+	} else if ( /\b(?:headless)?chrome\//i.test( userAgent ) ) {
 
-		// Catches Chrome on Android as well (i.e. the default
-		// Android browser on Android >= 4.4).
-		expected = {
-			"ajax": true,
-			"boxSizingReliable": true,
-			"checkClone": true,
-			"checkOn": true,
-			"clearCloneStyle": true,
-			"cors": true,
-			"createHTMLDocument": true,
-			"focusin": false,
-			"noCloneChecked": true,
-			"optSelected": true,
-			"pixelMarginRight": true,
-			"pixelPosition": true,
-			"radioValue": true,
-			"reliableMarginLeft": true
-		};
-	} else if ( /\b(?:9|10)\.\d(\.\d+)* safari/i.test( userAgent ) ) {
-		expected = {
-			"ajax": true,
-			"boxSizingReliable": true,
-			"checkClone": true,
-			"checkOn": true,
-			"clearCloneStyle": true,
-			"cors": true,
-			"createHTMLDocument": true,
-			"focusin": false,
-			"noCloneChecked": true,
-			"optSelected": true,
-			"pixelMarginRight": true,
-			"pixelPosition": false,
-			"radioValue": true,
-			"reliableMarginLeft": true
-		};
-	} else if ( /firefox/i.test( userAgent ) ) {
-		expected = {
-			"ajax": true,
-			"boxSizingReliable": true,
-			"checkClone": true,
-			"checkOn": true,
-			"clearCloneStyle": true,
-			"cors": true,
-			"createHTMLDocument": true,
-			"focusin": false,
-			"noCloneChecked": true,
-			"optSelected": true,
-			"pixelMarginRight": true,
-			"pixelPosition": true,
-			"radioValue": true,
-			"reliableMarginLeft": false
-		};
-	} else if ( /iphone os (?:9|10)_/i.test( userAgent ) ) {
-		expected = {
-			"ajax": true,
-			"boxSizingReliable": true,
-			"checkClone": true,
-			"checkOn": true,
-			"clearCloneStyle": true,
-			"cors": true,
-			"createHTMLDocument": true,
-			"focusin": false,
-			"noCloneChecked": true,
-			"optSelected": true,
-			"pixelMarginRight": true,
-			"pixelPosition": false,
-			"radioValue": true,
-			"reliableMarginLeft": true
-		};
-	} else if ( /iphone os 8_/i.test( userAgent ) ) {
-		expected = {
-			"ajax": true,
-			"boxSizingReliable": true,
-			"checkClone": true,
-			"checkOn": true,
-			"clearCloneStyle": true,
-			"cors": true,
-			"createHTMLDocument": false,
-			"focusin": false,
-			"noCloneChecked": true,
-			"optSelected": true,
-			"pixelMarginRight": true,
-			"pixelPosition": false,
-			"radioValue": true,
-			"reliableMarginLeft": true
-		};
-	} else if ( /iphone os 7_/i.test( userAgent ) ) {
-		expected = {
-			"ajax": true,
-			"boxSizingReliable": true,
-			"checkClone": true,
-			"checkOn": true,
-			"clearCloneStyle": true,
-			"cors": true,
-			"createHTMLDocument": true,
-			"focusin": false,
-			"noCloneChecked": true,
-			"optSelected": true,
-			"pixelMarginRight": true,
-			"pixelPosition": false,
-			"radioValue": true,
-			"reliableMarginLeft": true
-		};
-	} else if ( /android 4\.[0-3]/i.test( userAgent ) ) {
-		expected = {
-			"ajax": true,
-			"boxSizingReliable": true,
-			"checkClone": false,
-			"checkOn": false,
-			"clearCloneStyle": true,
-			"cors": true,
-			"createHTMLDocument": true,
-			"focusin": false,
-			"noCloneChecked": true,
-			"optSelected": true,
-			"pixelMarginRight": false,
-			"pixelPosition": false,
-			"radioValue": true,
-			"reliableMarginLeft": false
-		};
+		// Catches Edge, Chrome on Android & Opera as well.
+		expected = expectedMap.chrome;
+	} else if ( /\bfirefox\//i.test( userAgent ) ) {
+		expected = expectedMap.firefox;
+	} else if ( /\biphone os \d+_/i.test( userAgent ) ) {
+		expected = expectedMap.ios;
+	} else if ( /\bversion\/\d+(?:\.\d+)+ safari/i.test( userAgent ) ) {
+		if ( navigator.maxTouchPoints > 1 ) {
+			expected = expectedMap.ios;
+		} else {
+			expected = expectedMap.safari;
+		}
 	}
 
 	QUnit.test( "Verify that support tests resolve as expected per browser", function( assert ) {
@@ -247,16 +133,63 @@ testIframe(
 			j++;
 		}
 
+		// Add an assertion per undefined support prop as it may
+		// not even exist on computedSupport but we still want to run
+		// the check.
+		for ( prop in expected ) {
+			if ( expected[ prop ] === undefined ) {
+				j++;
+			}
+		}
+
 		assert.expect( j );
 
 		for ( i in expected ) {
-			if ( jQuery.ajax || i !== "ajax" && i !== "cors" ) {
-				assert.equal( computedSupport[ i ], expected[ i ],
-					"jQuery.support['" + i + "']: " + computedSupport[ i ] +
-						", expected['" + i + "']: " + expected[ i ] );
-			} else {
-				assert.ok( true, "no ajax; skipping jQuery.support['" + i + "']" );
+			assert.equal( computedSupport[ i ], expected[ i ],
+				"jQuery.support['" + i + "']: " + computedSupport[ i ] +
+					", expected['" + i + "']: " + expected[ i ] +
+					";\nUser Agent: " + navigator.userAgent );
+		}
+	} );
+
+	QUnit.test( "Verify support tests are failing in one of tested browsers",
+		function( assert ) {
+
+		var prop, browserKey, supportTestName,
+			i = 0,
+			supportProps = {},
+			failingSupportProps = {};
+
+		for ( prop in computedSupport ) {
+			i++;
+		}
+
+		// Add an assertion per undefined support prop as it may
+		// not even exist on computedSupport but we still want to run
+		// the check.
+		for ( prop in expected ) {
+			if ( expected[ prop ] === undefined ) {
+				i++;
 			}
+		}
+
+		assert.expect( i );
+
+		// Record all support props and the failing ones and ensure every test
+		// is failing at least once.
+		for ( browserKey in expectedMap ) {
+			for ( supportTestName in expectedMap[ browserKey ] ) {
+				supportProps[ supportTestName ] = true;
+				if ( !expectedMap[ browserKey ][ supportTestName ] ) {
+					failingSupportProps[ supportTestName ] = true;
+				}
+			}
+		}
+
+		for ( supportTestName in supportProps ) {
+			assert.ok( failingSupportProps[ supportTestName ],
+				"jQuery.support['" + supportTestName +
+					"'] is expected to fail at least in one browser" );
 		}
 	} );
 
